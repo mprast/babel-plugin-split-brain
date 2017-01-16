@@ -1,0 +1,9 @@
+{
+  "name": "split-brain",
+  "version": "1.0.0",
+  "description": "Simple, declarative code splitting.",
+  "main": "split-brain.js",
+  "repository": "git@github.com:mprast/split-brain.git",
+  "author": "Matt Prast <mprast@gmail.com>",
+  "license": "MIT"
+}
