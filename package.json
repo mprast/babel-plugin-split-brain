@@ -1,16 +1,30 @@
 {
-  "name": "split-brain",
+  "name": "babel-plugin-split-brain",
   "version": "1.0.0",
   "description": "Simple, declarative code splitting.",
-  "main": "split-brain.js",
+  "main": "lib/index.js",
   "repository": "git@github.com:mprast/split-brain.git",
   "author": "Matt Prast <mprast@gmail.com>",
   "license": "MIT",
   "devDependencies": {
+    "babel-cli": "^6.22.2",
+    "babel-core": "^6.22.1",
+    "babel-preset-latest": "^6.22.0",
     "eslint": "^3.14.0",
-    "eslint-plugin-react": "^6.9.0"
+    "eslint-plugin-react": "^6.9.0",
+    "jest": "^18.1.0"
   },
   "dependencies": {
     "babel-plugin-syntax-jsx": "^6.18.0"
+  },
+  "jest": {
+    "globals": {
+      "package_root": "<rootDir>"
+    }
+  },
+  "scripts": {
+    "build": "babel src -d lib",
+    "test": "yarn build && jest",
+    "testd": "yarn build && node debug node_modules/.bin/jest -i"
   }
 }
