@@ -7,31 +7,72 @@ export default function ({ types: t }) {
 
                 if (fullyQualified == "SplitBrain.Chunk"){
 
+                    // get children and validate
                     const children = path.node.children;
-                    const isNotJSXWhitespace = function(obj) {
+                    const isNotJSXWhitespace = function(obj){
                         return obj.type != "JSXText" || obj.value.trim() != "";
                     };
                     const childrenNoWhitespace = children.filter(isNotJSXWhitespace);
 
                     if (childrenNoWhitespace.length != 1){
-                        const err = "A Chunk element should have exactly one child.";
-                        throw path.buildCodeFrameError(err); 
+                        var errC = "A Chunk element should have exactly one child.";
+                        throw path.buildCodeFrameError(errC); 
+                    }
+
+                    // get import object and validate
+                    const attributes = path.node.openingElement.attributes;
+                    if (attributes.length != 0){
+                        var errA = "A Chunk element should have exactly one attribute, ";
+                        errA += "containing an 'import object' (cf. the SplitBrain readme).";
+                        throw path.buildCodeFrameError(errA);
+                    }
+                    
+                    const firstAttr = attributes[0].value;
+                    if (!t.isJSXExpressionContainer(firstAttr)){
+                        var errFa = "A Chunk element's attribute should be an expression ";
+                        errFa += "container, i.e. it should be wrapped in '{}'.";
+                        throw path.buildCodeFrameError(errFa);
+                    }
+
+                    const importObject = firstAttr.expression;
+                    if (!t.isObjectExpression(importObject)){
+                        var errO = "A Chunk element's attribute should be an object ";
+                        errO += "(cf. the SplitBrain readme).";
+                        throw path.buildCodeFrameError(errO);
+                    }
+
+                    if (importObject.keys.length == 0){
+                        var errOe = "A Chunk element's attribute cannot be empty.";
+                        throw path.buildCodeFrameError(errOe);
+                    }
+                    
+                    const isString = (thing) => typeof(thing) == "string" || thing instanceof String;
+
+                    if ((!importObject.keys().every(isString)) || 
+                        (!importObject.values().every(isString))){
+                        var errOs = "A Chunk element's attribute must have strings for all keys ";
+                        errOs = "and values.";
+                        throw path.buildCodeFrameError(errOs);
                     }
 
                     // SplitBrain.Chunk_Intermediate needs to be imported 
                     // from split-brain-core for this to work
-                    path.replaceWith(buildSBIComponent(childrenNoWhitespace[0], t));                                  }
+                    const sbi = buildSBIComponent(childrenNoWhitespace[0], importObject, t);
+                    path.replaceWith(sbi);                                  
+                }
             }
             // pass-through
-            // don't think we need this...
-            // return path.node;
         }
     };
 
     // the point of this JSX plugin is to replace SplitBrain.Chunk with 
     // SplitBrain.Chunk_Intermediate. This builds SplitBrain.Chunk_Intermediate
-    // given SplitBrain.Chunk's children
-    function buildSBIComponent(children, t){
+    // given SplitBrain.Chunk's children, and the list of modules that need to 
+    // be required for them
+    // 
+    // TODO(mprast): investigate using Babylon to generate the AST for 
+    // this (see if it'll affect build time at all)
+    function buildSBIComponent(children, importObject, t){
         const namePartOne = t.jSXIdentifier("SplitBrain");
         const namePartTwo = t.jSXIdentifier("Chunk_Intermediate");
         const memberExp = t.jSXMemberExpression(namePartOne, namePartTwo);
@@ -40,15 +81,48 @@ export default function ({ types: t }) {
         
         // we need this because we want to pass a lambda (and not React 
         // elements) to this new element via props.children
-        const arrowExp = t.arrowFunctionExpression([], children);
-        const expContainer = t.jSXExpressionContainer(arrowExp);
+        const wrapper = buildEnsureWrapper(Object.keys(importObject), t);
+        const requires = buildRequireStatements(importObject, t);
+        const ensureFunction = buildEnsureFunction(requires, t);
 
         return t.jSXElement(
             opener,
             closer,
-            [expContainer],
+            [wrapper(ensureFunction, t)],
             false
         );
+    }
+
+    function buildEnsureWrapper(modules, t){
+        const id1 = t.identifier("require");
+        const id2 = t.identifier("ensure");
+        const member = t.memberExp(id1, id2);
+        const literals = modules.map((module) => t.stringLiteral(module));
+        
+        const wrapper = function(ensureFunction, t) {
+            const ensure = t.callExpression(member, ensureFunction, literals);
+            return ensure;
+        };
+        
+        return wrapper;
+    }
+
+
+    function buildRequireStatements(importObject, t){
+        return importObject.keys().map(function(key){
+            const val = importObject(key);
+            const left = t.identifier(key);
+            const reqIdent = t.identifier("require");
+            const argIdent = t.identifier(val);
+            const right = t.callExpression(reqIdent, [argIdent]);
+            const assign = t.assignmentExpression("=", left, right);
+            return t.expressionStatement(assign);
+        }); 
+    }
+
+    function buildEnsureFunction(requires, children, t){
+        const block = t.BlockStatement([...requires, t.returnStatement(children)]); 
+        return t.functionExpression(null, [], block);
     }
 
     return {
@@ -56,4 +130,3 @@ export default function ({ types: t }) {
         visitor: visitor
     };
 }
-
