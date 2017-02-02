@@ -19,6 +19,6 @@ function test(fixtureName) {
 
 [
     "injects_require_ensure",
-    "handles_nested_children"
-    // "export"
+    "handles_nested_children",
+    "handles_expression_containers"
 ].map(test);

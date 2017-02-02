@@ -6,69 +6,87 @@ export default function ({ types: t }) {
                 const fullyQualified = `${name.object.name}.${name.property.name}`;
 
                 if (fullyQualified == "SplitBrain.Chunk"){
-
-                    // get children and validate
-                    const children = path.node.children;
-                    const isNotJSXWhitespace = function(obj){
-                        return obj.type != "JSXText" || obj.value.trim() != "";
-                    };
-                    const childrenNoWhitespace = children.filter(isNotJSXWhitespace);
-
-                    if (childrenNoWhitespace.length != 1){
-                        var errC = "A Chunk element should have exactly one child.";
-                        throw path.buildCodeFrameError(errC); 
-                    }
-
-                    // get import object and validate
-                    const attributes = path.node.openingElement.attributes;
-                    if (attributes.length != 1){
-                        var errA = "A Chunk element should have exactly one attribute, ";
-                        errA += "containing an 'import object' (cf. the SplitBrain readme).";
-                        throw path.buildCodeFrameError(errA);
-                    }
-                    
-                    const firstAttr = attributes[0].value;
-                    if (!t.isJSXExpressionContainer(firstAttr)){
-                        var errFa = "A Chunk element's attribute should be an expression ";
-                        errFa += "container, i.e. it should be wrapped in '{}'.";
-                        throw path.buildCodeFrameError(errFa);
-                    }
-
-                    const objExp = firstAttr.expression;
-                    if (!t.isObjectExpression(objExp)){
-                        var errO = "A Chunk element's attribute should be an object ";
-                        errO += "(cf. the SplitBrain readme).";
-                        throw path.buildCodeFrameError(errO);
-                    }
-
-                    const objProps = objExp.properties;
-                    if (Object.keys(objProps).length == 0){
-                        var errOe = "A Chunk element's attribute cannot be empty.";
-                        throw path.buildCodeFrameError(errOe);
-                    }
-                    
-                    const isStringProp = function (prop){
-                        return prop.key.type == "StringLiteral" && prop.value.type == "StringLiteral";
-                    }; 
-
-                    if (!objProps.every(isStringProp)){
-                        var errOs = "A Chunk element's attribute must have strings for all keys ";
-                        errOs += "and values.";
-                        throw path.buildCodeFrameError(errOs);
-                    }
-
-                    const importObject = {};
-                    objProps.forEach((prop) => importObject[prop.key.value] = prop.value.value);
+                    const children = getChildren(path);
+                    const importObject = getImportObject(path);
 
                     // SplitBrain.Chunk_Intermediate needs to be imported 
                     // from split-brain-core for this to work
-                    const sbi = buildSBIComponent(childrenNoWhitespace[0], importObject, t);
+                    const sbi = buildSBIComponent(children, importObject, t);
                     path.replaceWith(sbi);                                  
                 }
             }
             // pass-through
         }
     };
+
+    function getChildren(path) {
+        const children = path.node.children;
+        const isNotJSXWhitespace = function(obj){
+            return obj.type != "JSXText" || obj.value.trim() != "";
+        };
+        const childrenNoWhitespace = children.filter(isNotJSXWhitespace);
+
+        if (childrenNoWhitespace.length != 1){
+            var errC = "A Chunk element should have exactly one child.";
+            throw path.buildCodeFrameError(errC); 
+        }
+
+        var child = childrenNoWhitespace[0];
+
+        // a JSXExpressionContainer should be reduced to just its inner 
+        // expression (since we're going to wrap the whole thing in 
+        // another expression container anyway
+        if (t.isJSXExpressionContainer(child)) {
+            child = child.expression;
+        }
+
+        return child;
+    }
+
+    function getImportObject(path) {
+        // get import object and validate
+        const attributes = path.node.openingElement.attributes;
+        if (attributes.length != 1){
+            var errA = "A Chunk element should have exactly one attribute, ";
+            errA += "containing an 'import object' (cf. the SplitBrain readme).";
+            throw path.buildCodeFrameError(errA);
+        }
+        
+        const firstAttr = attributes[0].value;
+        if (!t.isJSXExpressionContainer(firstAttr)){
+            var errFa = "A Chunk element's attribute should be an expression ";
+            errFa += "container, i.e. it should be wrapped in '{}'.";
+            throw path.buildCodeFrameError(errFa);
+        }
+
+        const objExp = firstAttr.expression;
+        if (!t.isObjectExpression(objExp)){
+            var errO = "A Chunk element's attribute should be an object ";
+            errO += "(cf. the SplitBrain readme).";
+            throw path.buildCodeFrameError(errO);
+        }
+
+        const objProps = objExp.properties;
+        if (Object.keys(objProps).length == 0){
+            var errOe = "A Chunk element's attribute cannot be empty.";
+            throw path.buildCodeFrameError(errOe);
+        }
+        
+        const isStringProp = function (prop){
+            return prop.key.type == "StringLiteral" && prop.value.type == "StringLiteral";
+        }; 
+
+        if (!objProps.every(isStringProp)){
+            var errOs = "A Chunk element's attribute must have strings for all keys ";
+            errOs += "and values.";
+            throw path.buildCodeFrameError(errOs);
+        }
+
+        const importObject = {};
+        objProps.forEach((prop) => importObject[prop.key.value] = prop.value.value);
+    
+        return importObject;
+    }
 
     // the point of this JSX plugin is to replace SplitBrain.Chunk with 
     // SplitBrain.Chunk_Intermediate. This builds SplitBrain.Chunk_Intermediate
@@ -77,7 +95,7 @@ export default function ({ types: t }) {
     // 
     // TODO(mprast): investigate using Babylon to generate the AST for 
     // this (see if it'll affect build time at all)
-    function buildSBIComponent(children, importObject, t){
+    function buildSBIComponent(children, importObject){
         const namePartOne = t.jSXIdentifier("SplitBrain");
         const namePartTwo = t.jSXIdentifier("Chunk_Intermediate");
         const memberExp = t.jSXMemberExpression(namePartOne, namePartTwo);
@@ -99,7 +117,7 @@ export default function ({ types: t }) {
         );
     }
 
-    function buildEnsureWrapper(modules, t){
+    function buildEnsureWrapper(modules){
         const id1 = t.identifier("require");
         const id2 = t.identifier("ensure");
         const member = t.memberExpression(id1, id2);
@@ -114,7 +132,7 @@ export default function ({ types: t }) {
     }
 
 
-    function buildRequireStatements(importObject, t){
+    function buildRequireStatements(importObject){
         return Object.keys(importObject).map(function(key){
             const val = importObject[key];
             const left = t.identifier(key);
@@ -126,7 +144,7 @@ export default function ({ types: t }) {
         }); 
     }
 
-    function buildEnsureFunction(requires, children, t){
+    function buildEnsureFunction(requires, children){
         const block = t.BlockStatement([...requires, t.returnStatement(children)]); 
         return t.functionExpression(null, [], block);
     }
