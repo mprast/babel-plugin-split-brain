@@ -18,7 +18,7 @@ function test(fixtureName) {
 }
 
 [
-    "should_inject_arrow_function"
-    // "plain",
+    "injects_require_ensure",
+    "handles_nested_children"
     // "export"
 ].map(test);

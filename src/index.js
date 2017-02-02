@@ -21,7 +21,7 @@ export default function ({ types: t }) {
 
                     // get import object and validate
                     const attributes = path.node.openingElement.attributes;
-                    if (attributes.length != 0){
+                    if (attributes.length != 1){
                         var errA = "A Chunk element should have exactly one attribute, ";
                         errA += "containing an 'import object' (cf. the SplitBrain readme).";
                         throw path.buildCodeFrameError(errA);
@@ -34,26 +34,31 @@ export default function ({ types: t }) {
                         throw path.buildCodeFrameError(errFa);
                     }
 
-                    const importObject = firstAttr.expression;
-                    if (!t.isObjectExpression(importObject)){
+                    const objExp = firstAttr.expression;
+                    if (!t.isObjectExpression(objExp)){
                         var errO = "A Chunk element's attribute should be an object ";
                         errO += "(cf. the SplitBrain readme).";
                         throw path.buildCodeFrameError(errO);
                     }
 
-                    if (importObject.keys.length == 0){
+                    const objProps = objExp.properties;
+                    if (Object.keys(objProps).length == 0){
                         var errOe = "A Chunk element's attribute cannot be empty.";
                         throw path.buildCodeFrameError(errOe);
                     }
                     
-                    const isString = (thing) => typeof(thing) == "string" || thing instanceof String;
+                    const isStringProp = function (prop){
+                        return prop.key.type == "StringLiteral" && prop.value.type == "StringLiteral";
+                    }; 
 
-                    if ((!importObject.keys().every(isString)) || 
-                        (!importObject.values().every(isString))){
+                    if (!objProps.every(isStringProp)){
                         var errOs = "A Chunk element's attribute must have strings for all keys ";
-                        errOs = "and values.";
+                        errOs += "and values.";
                         throw path.buildCodeFrameError(errOs);
                     }
+
+                    const importObject = {};
+                    objProps.forEach((prop) => importObject[prop.key.value] = prop.value.value);
 
                     // SplitBrain.Chunk_Intermediate needs to be imported 
                     // from split-brain-core for this to work
@@ -81,14 +86,15 @@ export default function ({ types: t }) {
         
         // we need this because we want to pass a lambda (and not React 
         // elements) to this new element via props.children
-        const wrapper = buildEnsureWrapper(Object.keys(importObject), t);
+        const wrapper = buildEnsureWrapper(Object.values(importObject), t);
         const requires = buildRequireStatements(importObject, t);
-        const ensureFunction = buildEnsureFunction(requires, t);
+        const ensureFunction = buildEnsureFunction(requires, children, t);
+        const innerExp = t.jSXExpressionContainer(wrapper(ensureFunction, t));
 
         return t.jSXElement(
             opener,
             closer,
-            [wrapper(ensureFunction, t)],
+            [innerExp],
             false
         );
     }
@@ -96,11 +102,11 @@ export default function ({ types: t }) {
     function buildEnsureWrapper(modules, t){
         const id1 = t.identifier("require");
         const id2 = t.identifier("ensure");
-        const member = t.memberExp(id1, id2);
-        const literals = modules.map((module) => t.stringLiteral(module));
+        const member = t.memberExpression(id1, id2);
+        const literals = t.arrayExpression(modules.map((module) => t.stringLiteral(module)));
         
         const wrapper = function(ensureFunction, t) {
-            const ensure = t.callExpression(member, ensureFunction, literals);
+            const ensure = t.callExpression(member, [literals, ensureFunction]);
             return ensure;
         };
         
@@ -109,14 +115,14 @@ export default function ({ types: t }) {
 
 
     function buildRequireStatements(importObject, t){
-        return importObject.keys().map(function(key){
-            const val = importObject(key);
+        return Object.keys(importObject).map(function(key){
+            const val = importObject[key];
             const left = t.identifier(key);
             const reqIdent = t.identifier("require");
-            const argIdent = t.identifier(val);
+            const argIdent = t.stringLiteral(val);
             const right = t.callExpression(reqIdent, [argIdent]);
-            const assign = t.assignmentExpression("=", left, right);
-            return t.expressionStatement(assign);
+            const declarator = t.variableDeclarator(left, right);
+            return t.variableDeclaration("var", [declarator]);
         }); 
     }
 
