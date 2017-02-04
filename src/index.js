@@ -139,7 +139,8 @@ export default function ({ types: t }) {
             const left = t.identifier(key);
             const reqIdent = t.identifier("require");
             const argIdent = t.stringLiteral(val);
-            const right = t.callExpression(reqIdent, [argIdent]);
+            const rightCall = t.callExpression(reqIdent, [argIdent]);
+            const right = t.memberExpression(rightCall, t.identifier("default"));
             const declarator = t.variableDeclarator(left, right);
             return t.variableDeclaration("var", [declarator]);
         }); 
