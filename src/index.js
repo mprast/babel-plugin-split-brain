@@ -104,7 +104,8 @@ export default function ({ types: t }) {
         
         // we need this because we want to pass a lambda (and not React 
         // elements) to this new element via props.children
-        const wrapper = buildEnsureWrapper(Object.values(importObject), t);
+        const importVals = Object.keys(importObject).map((key) => importObject[key]);
+        const wrapper = buildEnsureWrapper(importVals, t);
         const requires = buildRequireStatements(importObject, t);
         const ensureFunction = buildEnsureFunction(requires, children, t);
         const innerExp = t.jSXExpressionContainer(wrapper(ensureFunction, t));

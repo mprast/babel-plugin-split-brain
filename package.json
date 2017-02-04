@@ -9,13 +9,13 @@
   "devDependencies": {
     "babel-cli": "^6.22.2",
     "babel-core": "^6.22.1",
-    "babel-preset-latest": "^6.22.0",
     "eslint": "^3.14.0",
     "eslint-plugin-react": "^6.9.0",
     "jest": "^18.1.0"
   },
   "dependencies": {
-    "babel-plugin-syntax-jsx": "^6.18.0"
+    "babel-plugin-syntax-jsx": "^6.18.0",
+    "babel-preset-latest": "^6.22.0"
   },
   "jest": {
     "globals": {
@@ -23,7 +23,7 @@
     }
   },
   "scripts": {
-    "build": "babel src -d lib",
+    "build": "yarn run babel -- src -d lib",
     "test": "yarn build && jest",
     "testd": "yarn build && node debug node_modules/.bin/jest -i",
     "prepublish": "yarn build"
