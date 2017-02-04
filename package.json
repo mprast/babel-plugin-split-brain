@@ -25,6 +25,7 @@
   "scripts": {
     "build": "babel src -d lib",
     "test": "yarn build && jest",
-    "testd": "yarn build && node debug node_modules/.bin/jest -i"
+    "testd": "yarn build && node debug node_modules/.bin/jest -i",
+    "prepublish": "yarn build"
   }
 }
