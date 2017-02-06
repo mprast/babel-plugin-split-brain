@@ -7,11 +7,25 @@ export default function ({ types: t }) {
 
                 if (fullyQualified == "SplitBrain.Chunk"){
                     const children = getChildren(path);
-                    const importObject = getImportObject(path);
+                    const importObject = buildImportObject(path);
+
+                    const innerFunction = buildInnerFunction(children, importObject, t);
+                    
+                    // when SplitBrain is disabled, we don't want to do any code splitting 
+                    // at all. this means we need to 1) not add a require.ensure(), 
+                    // 2) change the wrapper element from SplitBrain.Chunk_Intermediate to 
+                    // SplitBrain.Passthrough, which will just return the children as-is.
+                    if (this.opts.disabled){
+                        const callExp = t.callExpression(innerFunction, []);
+                        const jsxEc = t.jSXExpressionContainer(callExp);
+                        const element = buildJSXElement("SplitBrain", "Passthrough", [jsxEc]);
+                        path.replaceWith(element);
+                        return;
+                    }
 
                     // SplitBrain.Chunk_Intermediate needs to be imported 
                     // from split-brain-core for this to work
-                    const sbi = buildSBIComponent(children, importObject, t);
+                    const sbi = buildSBIComponent(importObject, innerFunction, t);
                     path.replaceWith(sbi);                                  
                 }
             }
@@ -43,7 +57,7 @@ export default function ({ types: t }) {
         return child;
     }
 
-    function getImportObject(path) {
+    function buildImportObject(path) {
         // get import object and validate
         const attributes = path.node.openingElement.attributes;
         if (attributes.length != 1){
@@ -88,6 +102,25 @@ export default function ({ types: t }) {
         return importObject;
     }
 
+    function buildInnerFunction(children, importObject, t){
+        const requires = buildRequireStatements(importObject, t);
+        const block = t.BlockStatement([...requires, t.returnStatement(children)]); 
+        return t.functionExpression(null, [], block);
+    }
+
+    function buildRequireStatements(importObject){
+        return Object.keys(importObject).map(function(key){
+            const val = importObject[key];
+            const left = t.identifier(key);
+            const reqIdent = t.identifier("require");
+            const argIdent = t.stringLiteral(val);
+            const rightCall = t.callExpression(reqIdent, [argIdent]);
+            const right = t.memberExpression(rightCall, t.identifier("default"));
+            const declarator = t.variableDeclarator(left, right);
+            return t.variableDeclaration("var", [declarator]);
+        }); 
+    }
+
     // the point of this JSX plugin is to replace SplitBrain.Chunk with 
     // SplitBrain.Chunk_Intermediate. This builds SplitBrain.Chunk_Intermediate
     // given SplitBrain.Chunk's children, and the list of modules that need to 
@@ -95,27 +128,17 @@ export default function ({ types: t }) {
     // 
     // TODO(mprast): investigate using Babylon to generate the AST for 
     // this (see if it'll affect build time at all)
-    function buildSBIComponent(children, importObject){
-        const namePartOne = t.jSXIdentifier("SplitBrain");
-        const namePartTwo = t.jSXIdentifier("Chunk_Intermediate");
-        const memberExp = t.jSXMemberExpression(namePartOne, namePartTwo);
-        const opener = t.jSXOpeningElement(memberExp, []);
-        const closer = t.jSXClosingElement(memberExp);
-        
-        // we need this because we want to pass a lambda (and not React 
-        // elements) to this new element via props.children
+    function buildSBIComponent(importObject, innerFunction){
+        // we want to pass a promise (and not React 
+        // elements) to this new element via props.children. 
+        // require.ensure will create the promise for us. 
+        // SplitBrain.Chunk_Intermediate will call it in 
+        // its render argument.
         const importVals = Object.keys(importObject).map((key) => importObject[key]);
         const wrapper = buildEnsureWrapper(importVals, t);
-        const requires = buildRequireStatements(importObject, t);
-        const ensureFunction = buildEnsureFunction(requires, children, t);
-        const innerExp = t.jSXExpressionContainer(wrapper(ensureFunction, t));
+        const innerExp = t.jSXExpressionContainer(wrapper(innerFunction, t));
 
-        return t.jSXElement(
-            opener,
-            closer,
-            [innerExp],
-            false
-        );
+        return buildJSXElement("SplitBrain", "Chunk_Intermediate", [innerExp]);
     }
 
     function buildEnsureWrapper(modules){
@@ -132,23 +155,19 @@ export default function ({ types: t }) {
         return wrapper;
     }
 
-
-    function buildRequireStatements(importObject){
-        return Object.keys(importObject).map(function(key){
-            const val = importObject[key];
-            const left = t.identifier(key);
-            const reqIdent = t.identifier("require");
-            const argIdent = t.stringLiteral(val);
-            const rightCall = t.callExpression(reqIdent, [argIdent]);
-            const right = t.memberExpression(rightCall, t.identifier("default"));
-            const declarator = t.variableDeclarator(left, right);
-            return t.variableDeclaration("var", [declarator]);
-        }); 
-    }
-
-    function buildEnsureFunction(requires, children){
-        const block = t.BlockStatement([...requires, t.returnStatement(children)]); 
-        return t.functionExpression(null, [], block);
+    function buildJSXElement(namespace, name, children){
+        const namePartOne = t.jSXIdentifier(namespace);
+        const namePartTwo = t.jSXIdentifier(name);
+        const memberExp = t.jSXMemberExpression(namePartOne, namePartTwo);
+        const opener = t.jSXOpeningElement(memberExp, []);
+        const closer = t.jSXClosingElement(memberExp);
+        
+        return t.jSXElement(
+            opener,
+            closer,
+            children,
+            false
+        );
     }
 
     return {
